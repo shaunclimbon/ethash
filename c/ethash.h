@@ -41,6 +41,67 @@
 extern "C" {
 #endif
 
+/*
+ * BEGIN from fnv.h
+ */
+
+#define FNV_PRIME 0x01000193
+
+static inline uint32_t fnv_hash(const uint32_t x, const uint32_t y) {
+	return x*FNV_PRIME ^ y;
+}
+
+/*
+ * END from fnv.h
+ */
+
+/*
+ * BEGIN from sha3.h
+ */
+
+#define decsha3(bits) \
+  int sha3_##bits(uint8_t*, size_t, const uint8_t*, size_t);
+
+decsha3(256)
+decsha3(512)
+
+static inline void SHA3_256(uint8_t * const ret, uint8_t const *data, const size_t size) {
+    sha3_256(ret, 32, data, size);
+}
+
+static inline void SHA3_512(uint8_t * const ret, uint8_t const *data, const size_t size) {
+    sha3_512(ret, 64, data, size);
+}
+
+/*
+ * END from sha3.h
+ */
+
+ /*
+  * BEGIN from internal.h
+  */
+
+  // compile time settings
+  #define NODE_WORDS (64/4)
+  #define MIX_WORDS (MIX_BYTES/4)
+  #define MIX_NODES (MIX_WORDS / NODE_WORDS)
+  #include <stdint.h>
+
+  typedef union node {
+      uint8_t bytes[NODE_WORDS * 4];
+      uint32_t words[NODE_WORDS];
+      uint64_t double_words[NODE_WORDS / 2];
+
+  #if defined(_M_X64) && ENABLE_SSE
+  	__m128i xmm[NODE_WORDS/4];
+  #endif
+
+  } node;
+
+  /*
+   * END from internal.h
+   */
+
 typedef struct ethash_params {
     size_t full_size;               // Size of full data set (in bytes, multiple of mix size (128)).
     size_t cache_size;              // Size of compute cache (in bytes, multiple of node size (64)).
@@ -51,20 +112,7 @@ typedef struct ethash_return_value {
     uint8_t mix_hash[32];
 } ethash_return_value;
 
-size_t ethash_get_datasize(const uint32_t block_number);
-size_t ethash_get_cachesize(const uint32_t block_number);
-
-// initialize the parameters
-static inline void ethash_params_init(ethash_params *params, const uint32_t block_number) {
-    params->full_size = ethash_get_datasize(block_number);
-    params->cache_size = ethash_get_cachesize(block_number);
-}
-
-typedef struct ethash_cache {
-    void *mem;
-} ethash_cache;
-
-void ethash_full(ethash_return_value *ret, void const *full_mem, ethash_params const *params, const uint8_t header_hash[32], const uint64_t nonce);
+void ethash_hash(ethash_return_value *ret, node const *full_nodes, ethash_params const *params, const uint8_t header_hash[32], const uint64_t nonce);
 
 #ifdef __cplusplus
 }
