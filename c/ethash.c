@@ -23,7 +23,95 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <stddef.h>
-#include "ethash.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stddef.h>
+
+/*
+ * BEGIN code from all headers
+ */
+
+ #define MIX_BYTES 128
+ #define HASH_BYTES 64
+ #define DATASET_PARENTS 256
+ #define CACHE_ROUNDS 3
+ #define ACCESSES 64
+
+ /*
+  * BEGIN from fnv.h
+  */
+
+ #define FNV_PRIME 0x01000193
+
+ static inline uint32_t fnv_hash(const uint32_t x, const uint32_t y) {
+ 	return x*FNV_PRIME ^ y;
+ }
+
+ /*
+  * END from fnv.h
+  */
+
+ /*
+  * BEGIN from sha3.h
+  */
+
+ #define decsha3(bits) \
+   int sha3_##bits(uint8_t*, size_t, const uint8_t*, size_t);
+
+ decsha3(256)
+ decsha3(512)
+
+ static inline void SHA3_256(uint8_t * const ret, uint8_t const *data, const size_t size) {
+     sha3_256(ret, 32, data, size);
+ }
+
+ static inline void SHA3_512(uint8_t * const ret, uint8_t const *data, const size_t size) {
+     sha3_512(ret, 64, data, size);
+ }
+
+ /*
+  * END from sha3.h
+  */
+
+  /*
+   * BEGIN from internal.h
+   */
+
+   // compile time settings
+   #define NODE_WORDS (64/4)
+   #define MIX_WORDS (MIX_BYTES/4)
+   #define MIX_NODES (MIX_WORDS / NODE_WORDS)
+   #include <stdint.h>
+
+   typedef union node {
+       uint8_t bytes[NODE_WORDS * 4];
+       uint32_t words[NODE_WORDS];
+       uint64_t double_words[NODE_WORDS / 2];
+
+   #if defined(_M_X64) && ENABLE_SSE
+   	__m128i xmm[NODE_WORDS/4];
+   #endif
+
+   } node;
+
+   /*
+    * END from internal.h
+    */
+
+ typedef struct ethash_params {
+     size_t full_size;               // Size of full data set (in bytes, multiple of mix size (128)).
+     size_t cache_size;              // Size of compute cache (in bytes, multiple of node size (64)).
+ } ethash_params;
+
+ typedef struct ethash_return_value {
+     uint8_t result[32];
+     uint8_t mix_hash[32];
+ } ethash_return_value;
+
+ /*
+  * END code from all headers
+  */
 
 /*
  * BEGIN from sha3.c
