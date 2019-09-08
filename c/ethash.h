@@ -24,7 +24,6 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stddef.h>
-#include "compiler.h"
 
 #define REVISION 23
 #define DATASET_BYTES_INIT 1073741824U // 2**30
