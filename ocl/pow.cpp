@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
     
     // This call will get the kernel object from program. A kernel is an 
     // OpenCL function that is executed on the FPGA. 
-    cl::Kernel krnl_vector_add(program,"krnl_vadd");
+    cl::Kernel krnl_pow(program,"krnl_ethash");
     
     // These commands will allocate memory on the Device. The cl::Buffer objects can
     // be used to reference the memory locations on the device. 
@@ -126,10 +126,10 @@ int main(int argc, char* argv[]) {
     
     //set the kernel Arguments
     int narg=0;
-    krnl_vector_add.setArg(narg++,buffer_a);
-    krnl_vector_add.setArg(narg++,buffer_b);
-    krnl_vector_add.setArg(narg++,buffer_result);
-    krnl_vector_add.setArg(narg++,DATA_SIZE);
+    krnl_pow.setArg(narg++,buffer_a);
+    krnl_pow.setArg(narg++,buffer_b);
+    krnl_pow.setArg(narg++,buffer_result);
+    krnl_pow.setArg(narg++,DATA_SIZE);
 
     //We then need to map our OpenCL buffers to get the pointers
     int *ptr_a = (int *) q.enqueueMapBuffer (buffer_a , CL_TRUE , CL_MAP_READ , 0, size_in_bytes);
@@ -147,7 +147,7 @@ int main(int argc, char* argv[]) {
     q.enqueueMigrateMemObjects({buffer_a,buffer_b},0/* 0 means from host*/);
 
     //Launch the Kernel
-    q.enqueueTask(krnl_vector_add);
+    q.enqueueTask(krnl_pow);
 
     // The result of the previous kernel execution will need to be retrieved in
     // order to view the results. This call will transfer the data from FPGA to
