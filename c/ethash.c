@@ -88,11 +88,6 @@
        uint8_t bytes[NODE_WORDS * 4];
        uint32_t words[NODE_WORDS];
        uint64_t double_words[NODE_WORDS / 2];
-
-   #if defined(_M_X64) && ENABLE_SSE
-   	__m128i xmm[NODE_WORDS/4];
-   #endif
-
    } node;
 
    /*
