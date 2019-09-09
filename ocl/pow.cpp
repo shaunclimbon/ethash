@@ -52,6 +52,50 @@ static const std::string error_message =
     "Error: Result mismatch:\n"
     "i = %d CPU result = %d Device result = %d\n";
 
+static char nibbleToChar(unsigned nibble)
+{
+	return (char) ((nibble >= 10 ? 'a'-10 : '0') + nibble);
+}
+
+static uint8_t charToNibble(char chr)
+{
+	if (chr >= '0' && chr <= '9')
+	{
+		return (uint8_t) (chr - '0');
+	}
+	if (chr >= 'a' && chr <= 'z')
+	{
+		return (uint8_t) (chr - 'a' + 10);
+	}
+	if (chr >= 'A' && chr <= 'Z')
+	{
+		return (uint8_t) (chr - 'A' + 10);
+	}
+	return 0;
+}
+
+static std::vector<uint8_t> hexStringToBytes(char const* str)
+{
+	std::vector<uint8_t> bytes(strlen(str) >> 1);
+	for (unsigned i = 0; i != bytes.size(); ++i)
+	{
+		bytes[i] = charToNibble(str[i*2 | 0]) << 4;
+		bytes[i] |= charToNibble(str[i*2 | 1]);
+	}
+	return bytes;
+}
+
+static std::string bytesToHexString(uint8_t const* bytes, unsigned size)
+{
+	std::string str;
+	for (unsigned i = 0; i != size; ++i)
+	{
+		str += nibbleToChar(bytes[i] >> 4);
+		str += nibbleToChar(bytes[i] & 0xf);
+	}
+	return str;
+}
+
 int main(int argc, char* argv[]) {
 
     //TARGET_DEVICE macro needs to be passed from gcc command line
@@ -62,8 +106,8 @@ int main(int argc, char* argv[]) {
 
     char* xclbinFilename = argv[1];
     
-    // Compute the size of array in bytes
-    size_t size_in_bytes = DATA_SIZE * sizeof(int);
+    size_t size_dag = 1073739904U;
+    size_t size_hsh = 32U;
     
     // Creates a vector of DATA_SIZE elements with an initial value of 10 and 32
     // using customized allocator for getting buffer alignment to 4k boundary
@@ -120,31 +164,44 @@ int main(int argc, char* argv[]) {
     
     // These commands will allocate memory on the Device. The cl::Buffer objects can
     // be used to reference the memory locations on the device. 
-    cl::Buffer buffer_a(context, CL_MEM_READ_ONLY, size_in_bytes);
-    cl::Buffer buffer_b(context, CL_MEM_READ_ONLY, size_in_bytes);
-    cl::Buffer buffer_result(context, CL_MEM_WRITE_ONLY, size_in_bytes);
+    cl::Buffer buf_res_mix(context, CL_MEM_WRITE_ONLY, size_hsh);
+    cl::Buffer buf_res_hsh(context, CL_MEM_WRITE_ONLY, size_hsh);
+    cl::Buffer buf_dag(context, CL_MEM_READ_ONLY, size_dag);
+    cl::Buffer buf_hdr(context, CL_MEM_READ_ONLY, size_hsh);
     
     //set the kernel Arguments
     int narg=0;
-    krnl_pow.setArg(narg++,buffer_a);
-    krnl_pow.setArg(narg++,buffer_b);
-    krnl_pow.setArg(narg++,buffer_result);
-    krnl_pow.setArg(narg++,DATA_SIZE);
+    krnl_pow.setArg(narg++, buf_res_mix);
+    krnl_pow.setArg(narg++, buf_res_hsh);
+    krnl_pow.setArg(narg++, buf_dag);
+    krnl_pow.setArg(narg++, buf_hdr);
+    krnl_pow.setArg(narg++, 0); //nonce=0
 
     //We then need to map our OpenCL buffers to get the pointers
-    int *ptr_a = (int *) q.enqueueMapBuffer (buffer_a , CL_TRUE , CL_MAP_READ , 0, size_in_bytes);
-    int *ptr_b = (int *) q.enqueueMapBuffer (buffer_b , CL_TRUE , CL_MAP_READ , 0, size_in_bytes);
-    int *ptr_result = (int *) q.enqueueMapBuffer (buffer_result , CL_TRUE , CL_MAP_WRITE , 0, size_in_bytes);
+    char *p_res_mix = (char *) q.enqueueMapBuffer (buf_res_mix , CL_TRUE , CL_MAP_WRITE , 0, size_hsh);
+    char *p_res_hsh = (char *) q.enqueueMapBuffer (buf_res_hsh , CL_TRUE , CL_MAP_WRITE , 0, size_hsh);
+    char *p_dag = (char *) q.enqueueMapBuffer (buf_dag , CL_TRUE , CL_MAP_READ , 0, size_dag);
+    char *p_hdr = (char *) q.enqueueMapBuffer (buf_hdr , CL_TRUE , CL_MAP_READ , 0, size_hsh);
 
-    //setting input data
-    for(int i = 0 ; i< DATA_SIZE; i++){
-	    ptr_a[i] = 10;
-	    ptr_b[i] = 20;
-	    ptr_result[i] = 0;
-    }
+    // init dag
+	std::ifstream file("../dataset", std::ios::binary | std::ios::ate);
+	std::streamsize size = file.tellg();
+	file.seekg(0, std::ios::beg);
+	if (file.read(p_dag, size))
+	{
+		std::cout << "dag loaded\n";
+	} else {
+		std::cout << "failed to load dag\n";
+		std::cout << "error: only " << file.gcount() << " could be read\n";
+		std::cout << "eof: " << file.eof() << "\n";
+		std::cout << "fail: " << file.fail() << "\n";
+		std::cout << "bad: " << file.bad() << "\n";
+	}
+	// init header hash
+	memcpy(p_hdr, hexStringToBytes("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").data(), 32);
 
     // Data will be migrated to kernel space
-    q.enqueueMigrateMemObjects({buffer_a,buffer_b},0/* 0 means from host*/);
+    q.enqueueMigrateMemObjects({buf_dag,buf_hdr},0/* 0 means from host*/);
 
     //Launch the Kernel
     q.enqueueTask(krnl_pow);
@@ -152,27 +209,19 @@ int main(int argc, char* argv[]) {
     // The result of the previous kernel execution will need to be retrieved in
     // order to view the results. This call will transfer the data from FPGA to
     // source_results vector
-    q.enqueueMigrateMemObjects({buffer_result},CL_MIGRATE_MEM_OBJECT_HOST);
+    q.enqueueMigrateMemObjects({buf_res_mix,buf_res_hsh},CL_MIGRATE_MEM_OBJECT_HOST);
 
     q.finish();
 
-    //Verify the result
-    int match = 0;
-    for (int i = 0; i < DATA_SIZE; i++) {
-        int host_result = ptr_a[i] + ptr_b[i];
-        if (ptr_result[i] != host_result) {
-            printf(error_message.c_str(), i, host_result, ptr_result[i]);
-            match = 1;
-            break;
-        }
-    }
+    //Print the result
+    std::cout << "mix: " << bytesToHexString((const uint8_t*)p_res_mix, 32).c_str() << std::endl;
+    std::cout << "hsh: " << bytesToHexString((const uint8_t*)p_res_hsh, 32).c_str() << std::endl;
 
-    q.enqueueUnmapMemObject(buffer_a , ptr_a);
-    q.enqueueUnmapMemObject(buffer_b , ptr_b);
-    q.enqueueUnmapMemObject(buffer_result , ptr_result);
+    q.enqueueUnmapMemObject(buf_res_mix , p_res_mix);
+    q.enqueueUnmapMemObject(buf_res_hsh , p_res_hsh);
+    q.enqueueUnmapMemObject(buf_dag , p_dag);
+    q.enqueueUnmapMemObject(buf_hdr , p_hdr);
     q.finish();
 
-    std::cout << "TEST " << (match ? "FAILED" : "PASSED") << std::endl; 
-    return (match ? EXIT_FAILURE :  EXIT_SUCCESS);
-
+    return 0;
 }
