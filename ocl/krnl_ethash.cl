@@ -21,7 +21,7 @@
 
  #define FNV_PRIME 0x01000193
 
- static inline uint32_t fnv_hash(const uint32_t x, const uint32_t y) {
+ static inline uint fnv_hash(const uint x, const uint y) {
  	return x*FNV_PRIME ^ y;
  }
 
@@ -34,16 +34,16 @@
   */
 
  #define decsha3(bits) \
-   int sha3_##bits(uint8_t*, size_t, const uint8_t*, size_t);
+   int sha3_##bits(uchar*, size_t, const uchar*, size_t);
 
  decsha3(256)
  decsha3(512)
 
- static inline void SHA3_256(uint8_t * const ret, uint8_t const *data, const size_t size) {
+ static inline void SHA3_256(uchar * const ret, uchar const *data, const size_t size) {
      sha3_256(ret, 32, data, size);
  }
 
- static inline void SHA3_512(uint8_t * const ret, uint8_t const *data, const size_t size) {
+ static inline void SHA3_512(uchar * const ret, uchar const *data, const size_t size) {
      sha3_512(ret, 64, data, size);
  }
 
@@ -60,25 +60,9 @@
    #define MIX_WORDS (MIX_BYTES/4)
    #define MIX_NODES (MIX_WORDS / NODE_WORDS)
 
-   typedef union node {
-       uint8_t bytes[NODE_WORDS * 4];
-       uint32_t words[NODE_WORDS];
-       uint64_t double_words[NODE_WORDS / 2];
-   } node;
-
    /*
     * END from internal.h
     */
-
- typedef struct ethash_params {
-     size_t full_size;               // Size of full data set (in bytes, multiple of mix size (128)).
-     size_t cache_size;              // Size of compute cache (in bytes, multiple of node size (64)).
- } ethash_params;
-
- typedef struct ethash_return_value {
-     uint8_t result[32];
-     uint8_t mix_hash[32];
- } ethash_return_value;
 
  /*
   * END code from all headers
@@ -91,17 +75,17 @@
  /******** The Keccak-f[1600] permutation ********/
 
  /*** Constants. ***/
- static const uint8_t rho[24] = \
+ constant const uchar rho[24] = \
    { 1,  3,   6, 10, 15, 21,
          28, 36, 45, 55,  2, 14,
          27, 41, 56,  8, 25, 43,
          62, 18, 39, 61, 20, 44};
- static const uint8_t pi[24] = \
+ constant const uchar pi[24] = \
    {10,  7, 11, 17, 18, 3,
          5, 16,  8, 21, 24, 4,
          15, 23, 19, 13, 12, 2,
          20, 14, 22,  9, 6,  1};
- static const uint64_t RC[24] = \
+ constant const ulong RC[24] = \
    {1ULL, 0x8082ULL, 0x800000000000808aULL, 0x8000000080008000ULL,
          0x808bULL, 0x80000001ULL, 0x8000000080008081ULL, 0x8000000000008009ULL,
          0x8aULL, 0x88ULL, 0x80008009ULL, 0x8000000aULL,
@@ -119,11 +103,11 @@
    REPEAT5(e; v += s;)
 
  /*** Keccak-f[1600] ***/
- static inline void keccakf(void* state) {
-     uint64_t* a = (uint64_t*)state;
-     uint64_t b[5] = {0};
-     uint64_t t = 0;
-     uint8_t x, y;
+ void keccakf(void* state) {
+	 ulong* a = (ulong*)state;
+	 ulong b[5] = {0};
+	 ulong t = 0;
+	 uchar x, y;
 
      for (int i = 0; i < 24; i++) {
          // Theta
@@ -161,14 +145,14 @@
  #define FOR(i, ST, L, S) \
    _(for (size_t i = 0; i < L; i += ST) { S; })
  #define mkapply_ds(NAME, S)                                          \
-   static inline void NAME(uint8_t* dst,                              \
-                           const uint8_t* src,                        \
+   static inline void NAME(uchar* dst,                              \
+                           const uchar* src,                        \
                            size_t len) {                              \
      FOR(i, 1, len, S);                                               \
    }
  #define mkapply_sd(NAME, S)                                          \
-   static inline void NAME(const uint8_t* src,                        \
-                           uint8_t* dst,                              \
+   static inline void NAME(const uchar* src,                        \
+		   	   	   	   	   uchar* dst,                              \
                            size_t len) {                              \
      FOR(i, 1, len, S);                                               \
    }
@@ -189,13 +173,10 @@
    }
 
  /** The sponge-based hash construction. **/
- static inline int hash(uint8_t* out, size_t outlen,
-         const uint8_t* in, size_t inlen,
-         size_t rate, uint8_t delim) {
-     if ((out == NULL) || ((in == NULL) && inlen != 0) || (rate >= Plen)) {
-         return -1;
-     }
-     uint8_t a[Plen] = {0};
+ int hash(uchar* out, size_t outlen,
+         const uchar* in, size_t inlen,
+         size_t rate, uchar delim) {
+     uchar a[Plen] = {0};
      // Absorb input.
      foldP(in, inlen, xorin);
      // Xor in the DS and pad frame.
@@ -208,13 +189,16 @@
      // Squeeze output.
      foldP(out, outlen, setout);
      setout(a, out, outlen);
-     memset(a, 0, 200);
+     //memset(a, 0, 200);
+ 	for (int i = 0; i < 200; i++) {
+ 		a[i] = 0;
+ 	}
      return 0;
  }
 
  #define defsha3(bits)                                             \
-   int sha3_##bits(uint8_t* out, size_t outlen,                    \
-                   const uint8_t* in, size_t inlen) {              \
+   int sha3_##bits(uchar* out, size_t outlen,                    \
+                   const uchar* in, size_t inlen) {              \
      if (outlen > (bits/8)) {                                      \
        return -1;                                                  \
      }                                                             \
@@ -229,57 +213,81 @@
   * END from sha3.c
   */
 
+#define DAG_SIZE 1073739904U
+
+ typedef union
+ {
+ 	uchar bytes[32 / sizeof(uchar)];
+ 	uint words[32 / sizeof(uint)];
+ 	ulong double_words[32 / sizeof(ulong)];
+ } hash32_t;
+
+ typedef union
+ {
+     uchar bytes[NODE_WORDS * 4];
+     uint words[NODE_WORDS];
+     ulong double_words[NODE_WORDS / 2];
+ } node64_t;
+
 kernel __attribute__((reqd_work_group_size(1, 1, 1)))
  void krnl_ethash(
-         ethash_return_value *ret,
-         node const *full_nodes,
-         ethash_params const *params,
-         const uint8_t header_hash[32],
-         const uint64_t nonce) {
+	        global hash32_t* ret_mix,
+			global hash32_t* ret_hash, // s+mix
+	        global node64_t* full_nodes, // dag
+	        const global hash32_t* header_hash,
+	        const uint nonce)
+ {
+		node64_t s_mix[MIX_NODES + 1];
+		hash32_t hash;
+	    //memcpy(s_mix[0].bytes, header_hash, 32);
+		for (int i = 0; i < 32/4; i++) {
+			s_mix[0].words[i] = header_hash->words[i];
+		}
 
-     assert((params->full_size % MIX_WORDS) == 0);
-
-     // pack hash and nonce together into first 40 bytes of s_mix
-     assert(sizeof(node) * 8 == 512);
-     node s_mix[MIX_NODES + 1];
-     memcpy(s_mix[0].bytes, header_hash, 32);
-
-     s_mix[0].double_words[4] = nonce;
+	    s_mix[0].double_words[4] = nonce;
 
      // compute sha3-512 hash and replicate across mix
      SHA3_512(s_mix->bytes, s_mix->bytes, 40);
 
-     node *const mix = s_mix + 1;
+     node64_t* mix = s_mix + 1;
      for (unsigned w = 0; w != MIX_WORDS; ++w) {
          mix->words[w] = s_mix[0].words[w % NODE_WORDS];
      }
 
-     unsigned const
-             page_size = sizeof(uint32_t) * MIX_WORDS,
-             num_full_pages = (unsigned) (params->full_size / page_size);
+     unsigned const full_size = (unsigned) DAG_SIZE;
+     unsigned const num_full_pages = (unsigned) (full_size / MIX_BYTES);
 
+     uint index;
+     node64_t dag_node;
      for (unsigned i = 0; i != ACCESSES; ++i) {
-         uint32_t const index = ((s_mix->words[0] ^ i) * FNV_PRIME ^ mix->words[i % MIX_WORDS]) % num_full_pages;
+         index = ((s_mix->words[0] ^ i) * FNV_PRIME ^ mix->words[i % MIX_WORDS]) % num_full_pages;
 
          for (unsigned n = 0; n != MIX_NODES; ++n) {
-             const node *dag_node = &full_nodes[MIX_NODES * index + n];
+             dag_node = full_nodes[MIX_NODES * index + n];
 
-             for (unsigned w = 0; w != NODE_WORDS; ++w) {
-                 mix[n].words[w] = fnv_hash(mix[n].words[w], dag_node->words[w]);
-             }
+ 			for (unsigned w = 0; w != NODE_WORDS; ++w) {
+ 				mix[n].words[w] = fnv_hash(mix[n].words[w], dag_node.words[w]);
+ 			}
          }
      }
 
-     // compress mix
+     // compress mix (length reduced from 128 to 32 bytes)
      for (unsigned w = 0; w != MIX_WORDS; w += 4) {
-         uint32_t reduction = mix->words[w + 0];
+         uint reduction = mix->words[w + 0];
          reduction = reduction * FNV_PRIME ^ mix->words[w + 1];
          reduction = reduction * FNV_PRIME ^ mix->words[w + 2];
          reduction = reduction * FNV_PRIME ^ mix->words[w + 3];
          mix->words[w / 4] = reduction;
      }
 
-     memcpy(ret->mix_hash, mix->bytes, 32);
+     //memcpy(ret_mix, mix->bytes, 32);
+ 	for (unsigned i = 0; i < 32/4; i++) {
+ 		ret_mix->words[i] = mix->words[i];
+ 	}
      // final Keccak hash
-     SHA3_256(ret->result, s_mix->bytes, 64 + 32); // Keccak-256(s + compressed_mix)
+     SHA3_256(hash.bytes, s_mix->bytes, 64 + 32); // Keccak-256(s + compressed_mix)
+     // copy from local mem to global
+ 	for (unsigned i = 0; i < 32/4; i++) {
+ 		ret_hash->words[i] = hash.words[i];
+ 	}
  }
