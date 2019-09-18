@@ -229,13 +229,8 @@ typedef union
 	ulong double_words[NODE_WORDS / 2];
 } node64_t;
 
-void start_mix(const global hash32_t* header_hash, node64_t* s_mix, node64_t* mix, int l)
+void start_mix(node64_t* s_mix, node64_t* mix, int l)
 {
-	//memcpy(s_mix[0].bytes, header_hash, 32);
-	for (int i = 0; i < 32/4; i++) {
-		s_mix[0].words[i] = header_hash->words[i];
-	}
-
 	//s_mix[0].double_words[4] = nonce;
 	s_mix[0].double_words[4] = l;
 
@@ -248,25 +243,8 @@ void start_mix(const global hash32_t* header_hash, node64_t* s_mix, node64_t* mi
 	}
 }
 
-void proc_dag(global node64_t* full_nodes, node64_t* s_mix, node64_t* mix)
+void comp_mix(node64_t* mix)
 {
-	unsigned const full_size = (unsigned) DAG_SIZE;
-	unsigned const num_full_pages = (unsigned) (full_size / MIX_BYTES);
-	uint index;
-	node64_t dag_node;
-
-	for (unsigned i = 0; i != ACCESSES; ++i) {
-		index = ((s_mix->words[0] ^ i) * FNV_PRIME ^ mix->words[i % MIX_WORDS]) % num_full_pages;
-
-		for (unsigned n = 0; n != MIX_NODES; ++n) {
-			dag_node = full_nodes[MIX_NODES * index + n];
-
-			for (unsigned w = 0; w != NODE_WORDS; ++w) {
-				mix[n].words[w] = fnv_hash(mix[n].words[w], dag_node.words[w]);
-			}
-		}
-	}
-
 	// compress mix (length reduced from 128 to 32 bytes)
 	for (unsigned w = 0; w != MIX_WORDS; w += 4) {
 		uint reduction = mix->words[w + 0];
@@ -277,27 +255,11 @@ void proc_dag(global node64_t* full_nodes, node64_t* s_mix, node64_t* mix)
 	}
 }
 
-void calc_ret(global hash32_t* ret_mix, global hash32_t* ret_hash, node64_t* s_mix, node64_t* mix, int l)
+void calc_ret(hash32_t* hash, node64_t* s_mix, node64_t* mix, int l)
 {
-	hash32_t hash;
-
-	if (l == 0)
-	{
-		//memcpy(ret_mix, mix->bytes, 32);
-		for (unsigned i = 0; i < 32/4; i++) {
-			ret_mix->words[i] = mix->words[i];
-		}
-	}
-
 	// final Keccak hash
-	SHA3_256(hash.bytes, s_mix->bytes, 64 + 32); // Keccak-256(s + compressed_mix)
+	SHA3_256(hash->bytes, s_mix->bytes, 64 + 32); // Keccak-256(s + compressed_mix)
 	// copy from local mem to global
-	if (l == 0)
-	{
-		for (unsigned i = 0; i < 32/4; i++) {
-			ret_hash->words[i] = hash.words[i];
-		}
-	}
 }
 
 kernel __attribute__((reqd_work_group_size(1, 1, 1)))
@@ -313,11 +275,47 @@ void krnl_ethash(
 
 	for (int l = 1; l >= 0; l--)
 	{
+		//memcpy(s_mix[0].bytes, header_hash, 32);
+		for (int i = 0; i < 32/4; i++) {
+			s_mix[0].words[i] = header_hash->words[i];
+		}
 
-		start_mix(header_hash, s_mix, mix, l);
+		start_mix(s_mix, mix, l);
 
-		proc_dag(full_nodes, s_mix, mix);
+		unsigned const full_size = (unsigned) DAG_SIZE;
+		unsigned const num_full_pages = (unsigned) (full_size / MIX_BYTES);
+		uint index;
+		node64_t dag_node;
+		for (unsigned i = 0; i != ACCESSES; ++i) {
+			index = ((s_mix->words[0] ^ i) * FNV_PRIME ^ mix->words[i % MIX_WORDS]) % num_full_pages;
 
-		calc_ret(ret_mix, ret_hash, s_mix, mix, l);
+			for (unsigned n = 0; n != MIX_NODES; ++n) {
+				dag_node = full_nodes[MIX_NODES * index + n];
+
+				for (unsigned w = 0; w != NODE_WORDS; ++w) {
+					mix[n].words[w] = fnv_hash(mix[n].words[w], dag_node.words[w]);
+				}
+			}
+		}
+
+		comp_mix(mix);
+
+		if (l == 0)
+		{
+			//memcpy(ret_mix, mix->bytes, 32);
+			for (unsigned i = 0; i < 32/4; i++) {
+				ret_mix->words[i] = mix->words[i];
+			}
+		}
+
+		hash32_t hash;
+		calc_ret(&hash, s_mix, mix, l);
+
+		if (l == 0)
+		{
+			for (unsigned i = 0; i < 32/4; i++) {
+				ret_hash->words[i] = hash.words[i];
+			}
+		}
 	}
 }
