@@ -168,6 +168,15 @@ int main(int argc, char* argv[]) {
     cl::Buffer buf_res_hsh(context, CL_MEM_WRITE_ONLY, size_hsh);
     cl::Buffer buf_dag(context, CL_MEM_READ_ONLY, size_dag);
     cl::Buffer buf_hdr(context, CL_MEM_READ_ONLY, size_hsh);
+    //DEBUG:
+//    const int DBG1_SIZE = 128U;
+//    const int DBG2_SIZE = 128U;
+//    const int DBG3_SIZE = 128U;
+//    const int DBG4_SIZE = 32U;
+//    cl::Buffer buf_dbg1(context, CL_MEM_WRITE_ONLY, DBG1_SIZE);
+//    cl::Buffer buf_dbg2(context, CL_MEM_WRITE_ONLY, DBG2_SIZE);
+//    cl::Buffer buf_dbg3(context, CL_MEM_WRITE_ONLY, DBG3_SIZE);
+//    cl::Buffer buf_dbg4(context, CL_MEM_WRITE_ONLY, DBG4_SIZE);
     
     //set the kernel Arguments
     int narg=0;
@@ -176,12 +185,22 @@ int main(int argc, char* argv[]) {
     krnl_pow.setArg(narg++, buf_dag);
     krnl_pow.setArg(narg++, buf_hdr);
     krnl_pow.setArg(narg++, 0); //nonce=0
+    //DEBUG:
+//    krnl_pow.setArg(narg++, buf_dbg1);
+//    krnl_pow.setArg(narg++, buf_dbg2);
+//    krnl_pow.setArg(narg++, buf_dbg3);
+//    krnl_pow.setArg(narg++, buf_dbg4);
 
     //We then need to map our OpenCL buffers to get the pointers
     char *p_res_mix = (char *) q.enqueueMapBuffer (buf_res_mix , CL_TRUE , CL_MAP_WRITE , 0, size_hsh);
     char *p_res_hsh = (char *) q.enqueueMapBuffer (buf_res_hsh , CL_TRUE , CL_MAP_WRITE , 0, size_hsh);
     char *p_dag = (char *) q.enqueueMapBuffer (buf_dag , CL_TRUE , CL_MAP_READ , 0, size_dag);
     char *p_hdr = (char *) q.enqueueMapBuffer (buf_hdr , CL_TRUE , CL_MAP_READ , 0, size_hsh);
+    //DEBUG:
+//    char *p_dbg1 = (char *) q.enqueueMapBuffer (buf_dbg1 , CL_TRUE , CL_MAP_WRITE , 0, DBG1_SIZE);
+//    char *p_dbg2 = (char *) q.enqueueMapBuffer (buf_dbg2 , CL_TRUE , CL_MAP_WRITE , 0, DBG2_SIZE);
+//    char *p_dbg3 = (char *) q.enqueueMapBuffer (buf_dbg3 , CL_TRUE , CL_MAP_WRITE , 0, DBG3_SIZE);
+//    char *p_dbg4 = (char *) q.enqueueMapBuffer (buf_dbg4 , CL_TRUE , CL_MAP_WRITE , 0, DBG4_SIZE);
 
     // init dag
 	std::ifstream file("../dataset", std::ios::binary | std::ios::ate);
@@ -210,17 +229,29 @@ int main(int argc, char* argv[]) {
     // order to view the results. This call will transfer the data from FPGA to
     // source_results vector
     q.enqueueMigrateMemObjects({buf_res_mix,buf_res_hsh},CL_MIGRATE_MEM_OBJECT_HOST);
+    //DEBUG:
+//    q.enqueueMigrateMemObjects({buf_dbg1,buf_dbg2,buf_dbg3,buf_dbg4},CL_MIGRATE_MEM_OBJECT_HOST);
 
     q.finish();
 
     //Print the result
     std::cout << "mix: " << bytesToHexString((const uint8_t*)p_res_mix, 32).c_str() << std::endl;
     std::cout << "hsh: " << bytesToHexString((const uint8_t*)p_res_hsh, 32).c_str() << std::endl;
+    //DEBUG:
+//    std::cout << "dbg1: " << bytesToHexString((const uint8_t*)p_dbg1, DBG1_SIZE).c_str() << std::endl;
+//    std::cout << "dbg2: " << bytesToHexString((const uint8_t*)p_dbg2, DBG2_SIZE).c_str() << std::endl;
+//    std::cout << "dbg3: " << bytesToHexString((const uint8_t*)p_dbg3, DBG3_SIZE).c_str() << std::endl;
+//    std::cout << "dbg4: " << bytesToHexString((const uint8_t*)p_dbg4, DBG4_SIZE).c_str() << std::endl;
 
     q.enqueueUnmapMemObject(buf_res_mix , p_res_mix);
     q.enqueueUnmapMemObject(buf_res_hsh , p_res_hsh);
     q.enqueueUnmapMemObject(buf_dag , p_dag);
     q.enqueueUnmapMemObject(buf_hdr , p_hdr);
+    //DEBUG:
+//    q.enqueueUnmapMemObject(buf_dbg1, p_dbg1);
+//    q.enqueueUnmapMemObject(buf_dbg2, p_dbg2);
+//    q.enqueueUnmapMemObject(buf_dbg3, p_dbg3);
+//    q.enqueueUnmapMemObject(buf_dbg4, p_dbg4);
     q.finish();
 
     return 0;
